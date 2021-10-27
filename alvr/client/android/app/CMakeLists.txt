@@ -89,4 +89,5 @@ target_link_libraries( # Specifies the target library.
         )
 
 include_directories(include)
+include_directories(include/antilatency)
 include_directories(../ALVR-common)
