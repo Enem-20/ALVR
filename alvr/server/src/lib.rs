@@ -1,5 +1,6 @@
 mod connection;
 mod connection_utils;
+mod graphics_info;
 mod logging_backend;
 mod openvr;
 mod web_server;
@@ -10,20 +11,17 @@ mod bindings {
 }
 use bindings::*;
 
-use alvr_common::{
-    commands,
-    data::{ClientConnectionDesc, SessionManager},
-    graphics, logging,
-    prelude::*,
-};
+use alvr_common::prelude::*;
+use alvr_filesystem::{self as afs, Layout};
+use alvr_session::{ClientConnectionDesc, SessionManager};
 use lazy_static::lazy_static;
 use parking_lot::Mutex;
 use std::{
     collections::{hash_map::Entry, HashSet},
     ffi::{c_void, CStr, CString},
+    fs,
     net::IpAddr,
     os::raw::c_char,
-    path::PathBuf,
     ptr,
     sync::{
         atomic::{AtomicUsize, Ordering},
@@ -39,10 +37,10 @@ use tokio::{
 
 lazy_static! {
     // Since ALVR_DIR is needed to initialize logging, if error then just panic
-    static ref ALVR_DIR: PathBuf = {
-        commands::get_alvr_dir().unwrap()
-    };
-    static ref SESSION_MANAGER: Mutex<SessionManager> = Mutex::new(SessionManager::new(&ALVR_DIR));
+    static ref FILESYSTEM_LAYOUT: Layout =
+        afs::filesystem_layout_from_openvr_driver_root_dir(&alvr_commands::get_driver_dir().unwrap());
+    static ref SESSION_MANAGER: Mutex<SessionManager> =
+        Mutex::new(SessionManager::new(&FILESYSTEM_LAYOUT.session()));
     static ref MAYBE_RUNTIME: Mutex<Option<Runtime>> = Mutex::new(Runtime::new().ok());
     static ref CLIENTS_UPDATED_NOTIFIER: Notify = Notify::new();
     static ref MAYBE_WINDOW: Mutex<Option<Arc<alcro::UI>>> = Mutex::new(None);
@@ -57,8 +55,8 @@ lazy_static! {
         include_bytes!("../cpp/platform/win32/FrameRenderPS.cso").to_vec();
     static ref QUAD_SHADER_CSO: Vec<u8> =
         include_bytes!("../cpp/platform/win32/QuadVertexShader.cso").to_vec();
-    static ref COMPRESS_SLICES_CSO: Vec<u8> =
-        include_bytes!("../cpp/platform/win32/CompressSlicesPixelShader.cso").to_vec();
+    static ref COMPRESS_AXIS_ALIGNED_CSO: Vec<u8> =
+        include_bytes!("../cpp/platform/win32/CompressAxisAlignedPixelShader.cso").to_vec();
     static ref COLOR_CORRECTION_CSO: Vec<u8> =
         include_bytes!("../cpp/platform/win32/ColorCorrectionPixelShader.cso").to_vec();
 }
@@ -95,13 +93,13 @@ pub fn notify_shutdown_driver() {
 pub fn notify_restart_driver() {
     notify_shutdown_driver();
 
-    commands::restart_steamvr(&ALVR_DIR).ok();
+    alvr_commands::restart_steamvr(&FILESYSTEM_LAYOUT.launcher_exe()).ok();
 }
 
 pub fn notify_application_update() {
     notify_shutdown_driver();
 
-    commands::invoke_application_update(&ALVR_DIR).ok();
+    alvr_commands::invoke_application_update(&FILESYSTEM_LAYOUT.launcher_exe()).ok();
 }
 
 pub enum ClientListAction {
@@ -167,18 +165,23 @@ fn ui_thread() -> StrResult {
     const WINDOW_WIDTH: u32 = 800;
     const WINDOW_HEIGHT: u32 = 600;
 
-    let (pos_left, pos_top) = if let Ok((screen_width, screen_height)) = graphics::get_screen_size()
-    {
-        (
-            (screen_width - WINDOW_WIDTH) / 2,
-            (screen_height - WINDOW_HEIGHT) / 2,
-        )
-    } else {
-        (0, 0)
-    };
+    let (pos_left, pos_top) =
+        if let Ok((screen_width, screen_height)) = graphics_info::get_screen_size() {
+            (
+                (screen_width - WINDOW_WIDTH) / 2,
+                (screen_height - WINDOW_HEIGHT) / 2,
+            )
+        } else {
+            (0, 0)
+        };
+
+    let _tmpdir = trace_err!(tempfile::TempDir::new());
+    let path = _tmpdir.as_ref().unwrap().path();
+    let _file = trace_err!(fs::File::create(path.join("FirstLaunchAfterInstallation")))?;
 
     let window = Arc::new(trace_err!(alcro::UIBuilder::new()
         .content(alcro::Content::Url("http://127.0.0.1:8082"))
+        .user_data_dir(path)
         .size(WINDOW_WIDTH as _, WINDOW_HEIGHT as _)
         .custom_args(&[
             "--disk-cache-size=1",
@@ -218,7 +221,7 @@ fn init() {
             }
 
             let web_server =
-                logging::show_err_async(web_server::web_server(log_sender, events_sender));
+                alvr_common::show_err_async(web_server::web_server(log_sender, events_sender));
 
             tokio::select! {
                 _ = web_server => (),
@@ -226,13 +229,25 @@ fn init() {
             }
         });
 
-        thread::spawn(|| logging::show_err(ui_thread()));
+        thread::spawn(|| alvr_common::show_err(ui_thread()));
     }
 
-    let alvr_dir_c_string = CString::new(ALVR_DIR.to_string_lossy().to_string()).unwrap();
-    unsafe { g_alvrDir = alvr_dir_c_string.into_raw() };
+    unsafe {
+        g_sessionPath = CString::new(FILESYSTEM_LAYOUT.session().to_string_lossy().to_string())
+            .unwrap()
+            .into_raw();
+        g_driverRootDir = CString::new(
+            FILESYSTEM_LAYOUT
+                .openvr_driver_root_dir
+                .to_string_lossy()
+                .to_string(),
+        )
+        .unwrap()
+        .into_raw();
+    };
 }
 
+/// # Safety
 #[no_mangle]
 pub unsafe extern "C" fn HmdDriverFactory(
     interface_name: *const c_char,
@@ -247,13 +262,13 @@ pub unsafe extern "C" fn HmdDriverFactory(
     FRAME_RENDER_PS_CSO_LEN = FRAME_RENDER_PS_CSO.len() as _;
     QUAD_SHADER_CSO_PTR = QUAD_SHADER_CSO.as_ptr();
     QUAD_SHADER_CSO_LEN = QUAD_SHADER_CSO.len() as _;
-    COMPRESS_SLICES_CSO_PTR = COMPRESS_SLICES_CSO.as_ptr();
-    COMPRESS_SLICES_CSO_LEN = COMPRESS_SLICES_CSO.len() as _;
+    COMPRESS_AXIS_ALIGNED_CSO_PTR = COMPRESS_AXIS_ALIGNED_CSO.as_ptr();
+    COMPRESS_AXIS_ALIGNED_CSO_LEN = COMPRESS_AXIS_ALIGNED_CSO.len() as _;
     COLOR_CORRECTION_CSO_PTR = COLOR_CORRECTION_CSO.as_ptr();
     COLOR_CORRECTION_CSO_LEN = COLOR_CORRECTION_CSO.len() as _;
 
     unsafe extern "C" fn log_error(string_ptr: *const c_char) {
-        logging::show_e(CStr::from_ptr(string_ptr).to_string_lossy());
+        alvr_common::show_e(CStr::from_ptr(string_ptr).to_string_lossy());
     }
 
     unsafe fn log(level: log::Level, string_ptr: *const c_char) {
@@ -286,7 +301,9 @@ pub unsafe extern "C" fn HmdDriverFactory(
     }
 
     pub extern "C" fn driver_ready_idle(set_default_chap: bool) {
-        logging::show_err(commands::apply_driver_paths_backup(ALVR_DIR.clone()));
+        alvr_common::show_err(alvr_commands::apply_driver_paths_backup(
+            FILESYSTEM_LAYOUT.openvr_driver_root_dir.clone(),
+        ));
 
         if let Some(runtime) = &mut *MAYBE_RUNTIME.lock() {
             runtime.spawn(async move {

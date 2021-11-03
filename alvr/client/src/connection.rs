@@ -2,15 +2,12 @@ use crate::{
     connection_utils::{self, ConnectionError},
     MAYBE_LEGACY_SENDER,
 };
-use alvr_common::{
-    data::{
-        ClientConfigPacket, ClientControlPacket, ClientHandshakePacket, CodecType,
-        HeadsetInfoPacket, PlayspaceSyncPacket, PrivateIdentity, ServerControlPacket,
-        ServerHandshakePacket, SessionDesc, TrackingSpace, ALVR_NAME, ALVR_VERSION,
-    },
-    prelude::*,
-    sockets::{PeerType, ProtoControlSocket, StreamSocketBuilder, LEGACY},
-    spawn_cancelable,
+use alvr_common::{prelude::*, ALVR_NAME, ALVR_VERSION};
+use alvr_session::{CodecType, SessionDesc, TrackingSpace};
+use alvr_sockets::{
+    spawn_cancelable, ClientConfigPacket, ClientControlPacket, ClientHandshakePacket,
+    HeadsetInfoPacket, PeerType, PlayspaceSyncPacket, PrivateIdentity, ProtoControlSocket,
+    ServerControlPacket, ServerHandshakePacket, StreamSocketBuilder, LEGACY,
 };
 use futures::future::BoxFuture;
 use jni::{
@@ -18,12 +15,10 @@ use jni::{
     JavaVM,
 };
 use nalgebra::{Point2, Point3, Quaternion, UnitQuaternion};
-use semver::Version;
 use serde_json as json;
 use settings_schema::Switch;
 use std::{
     future, slice,
-    str::FromStr,
     sync::{
         atomic::{AtomicBool, Ordering},
         mpsc as smpsc, Arc,
@@ -172,12 +167,7 @@ async fn connection_pipeline(
     match control_receiver.recv().await {
         Ok(ServerControlPacket::StartStream) => {
             info!("Stream starting");
-            set_loading_message(
-                &*java_vm,
-                &*activity_ref,
-                &hostname,
-                STREAM_STARTING_MESSAGE,
-            )?;
+            set_loading_message(&*java_vm, &*activity_ref, hostname, STREAM_STARTING_MESSAGE)?;
         }
         Ok(ServerControlPacket::Restarting) => {
             info!("Server restarting");
@@ -259,26 +249,47 @@ async fn connection_pipeline(
             eyeHeight: config_packet.eye_resolution_height,
             refreshRate: config_packet.fps,
             enableFoveation: matches!(settings.video.foveated_rendering, Switch::Enabled(_)),
-            foveationStrength: if let Switch::Enabled(foveation_vars) =
+            foveationCenterSizeX: if let Switch::Enabled(foveation_vars) =
                 &settings.video.foveated_rendering
             {
-                foveation_vars.strength
+                foveation_vars.center_size_x
             } else {
-                0_f32
+                3_f32 / 5_f32
             },
-            foveationShape: if let Switch::Enabled(foveation_vars) =
+            foveationCenterSizeY: if let Switch::Enabled(foveation_vars) =
                 &settings.video.foveated_rendering
             {
-                foveation_vars.shape
+                foveation_vars.center_size_y
             } else {
-                1_f32
+                2_f32 / 5_f32
             },
-            foveationVerticalOffset: if let Switch::Enabled(foveation_vars) =
+            foveationCenterShiftX: if let Switch::Enabled(foveation_vars) =
                 &settings.video.foveated_rendering
             {
-                foveation_vars.vertical_offset
+                foveation_vars.center_shift_x
             } else {
-                0_f32
+                2_f32 / 5_f32
+            },
+            foveationCenterShiftY: if let Switch::Enabled(foveation_vars) =
+                &settings.video.foveated_rendering
+            {
+                foveation_vars.center_shift_y
+            } else {
+                1_f32 / 10_f32
+            },
+            foveationEdgeRatioX: if let Switch::Enabled(foveation_vars) =
+                &settings.video.foveated_rendering
+            {
+                foveation_vars.edge_ratio_x
+            } else {
+                2_f32
+            },
+            foveationEdgeRatioY: if let Switch::Enabled(foveation_vars) =
+                &settings.video.foveated_rendering
+            {
+                foveation_vars.edge_ratio_y
+            } else {
+                2_f32
             },
             trackingSpaceType: matches!(settings.headset.tracking_space, TrackingSpace::Stage) as _,
             extraLatencyMode: settings.headset.extra_latency_mode,

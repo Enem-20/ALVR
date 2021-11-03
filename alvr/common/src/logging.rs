@@ -1,8 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::{fmt::Display, future::Future};
 
-pub type StrResult<T = ()> = Result<T, String>;
-
 pub fn set_panic_hook() {
     std::panic::set_hook(Box::new(|panic_info| {
         let message = panic_info
@@ -155,7 +153,8 @@ pub struct Raw {
 // Pound signs are used to identify start and finish of json
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(tag = "id", content = "data")]
-pub enum Event {
+pub enum ServerEvent {
+    Session(String),
     SessionUpdated,
     SessionSettingsExtrapolationFailed,
     ClientFoundOk,
@@ -167,9 +166,10 @@ pub enum Event {
     UpdateDownloadError,
     Statistics(Statistics),
     Raw(Raw),
+    EchoQuery(String),
 }
 
-pub fn log_event(id: Event) {
+pub fn log_event(id: ServerEvent) {
     log::info!("#{}#", serde_json::to_string(&id).unwrap());
 }
 

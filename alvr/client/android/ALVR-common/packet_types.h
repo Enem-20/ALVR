@@ -73,8 +73,9 @@ enum ALVR_INPUT {
 	ALVR_INPUT_TRACKPAD_Y,
 	ALVR_INPUT_TRACKPAD_CLICK,
 	ALVR_INPUT_TRACKPAD_TOUCH,
+	ALVR_INPUT_THUMB_REST_TOUCH,
 
-	ALVR_INPUT_MAX = ALVR_INPUT_TRACKPAD_TOUCH,
+	ALVR_INPUT_MAX = ALVR_INPUT_THUMB_REST_TOUCH,
 	ALVR_INPUT_COUNT = ALVR_INPUT_MAX + 1
 };
 enum ALVR_HAND {
@@ -155,6 +156,10 @@ struct TrackingInfo {
 	double predictedDisplayTime;
 	TrackingQuat HeadPose_Pose_Orientation;
 	TrackingVector3 HeadPose_Pose_Position;
+	TrackingVector3 HeadPose_AngularVelocity;
+	TrackingVector3 HeadPose_LinearVelocity;
+	TrackingVector3 HeadPose_AngularAcceleration;
+	TrackingVector3 HeadPose_LinearAcceleration;
 
 	TrackingVector3 Other_Tracking_Source_Position;
 	TrackingQuat Other_Tracking_Source_Orientation;
@@ -227,7 +232,9 @@ struct TimeSync {
 
 	uint32_t averageTransportLatency;
 
-	uint32_t averageDecodeLatency;
+	uint64_t averageDecodeLatency;
+
+	uint32_t idleTime;
 
 	uint32_t fecFailure;
 	uint64_t fecFailureInSecond;
