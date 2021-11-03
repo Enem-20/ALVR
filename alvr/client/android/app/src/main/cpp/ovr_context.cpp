@@ -28,6 +28,7 @@
 #include <inttypes.h>
 #include <glm/gtx/euler_angles.hpp>
 #include <mutex>
+#include "antilatency.h"
 
 using namespace std;
 using namespace gl_render_utils;
@@ -78,6 +79,8 @@ public:
     // headset battery level
     int batteryLevel;
     int batteryPlugged;
+
+    std::shared_ptr<AntilatencyManager> altManager;
 
     struct HapticsState {
         uint64_t startUs;
@@ -161,11 +164,7 @@ OnCreateResult onCreate(void *v_env, void *v_activity, void *v_assetManager) {
 
     memset(g_ctx.mHapticsState, 0, sizeof(g_ctx.mHapticsState));
 
-    //ovrPlatformInitializeResult res = ovr_PlatformInitializeAndroid("", activity, env);
-    //LOGI("ovrPlatformInitializeResult %s", ovrPlatformInitializeResult_ToString(res));
-    //ovrRequest req;
-    //req = ovr_User_GetLoggedInUser();
-    //LOGI("Logged in user is %" PRIu64 "\n", req);
+    g_ctx.altManager = std::make_shared<AntilatencyManager>(g_ctx.env, activity);
 
     return {(int) g_ctx.streamTexture.get()->GetGLTexture(), (int) g_ctx.loadingTexture};
 }
@@ -555,10 +554,36 @@ void sendTrackingInfo(bool clientsidePrediction) {
     info.battery = g_ctx.batteryLevel;
     info.plugged = g_ctx.batteryPlugged;
 
-    memcpy(&info.HeadPose_Pose_Orientation, &frame->tracking.HeadPose.Pose.Orientation,
-           sizeof(ovrQuatf));
-    memcpy(&info.HeadPose_Pose_Position, &frame->tracking.HeadPose.Pose.Position,
-           sizeof(ovrVector3f));
+    auto position = frame->tracking.HeadPose.Pose.Position;
+    auto rotation = frame->tracking.HeadPose.Pose.Orientation;
+    auto extrapolationTime = frame->tracking.HeadPose.PredictionInSeconds;
+
+    g_ctx.altManager->setRigPose(position, rotation, extrapolationTime);
+    auto altRotation = g_ctx.altManager->getTrackingData().head.pose.rotation;
+    auto altPosition = g_ctx.altManager->getTrackingData().head.pose.position;
+
+    altPosition.z *= -1.0f;
+
+    // matching axis orientation
+    altRotation.w *= -1.0f;
+    altRotation.z *= -1.0f;
+
+    memcpy(&info.HeadPose_Pose_Orientation, &altRotation, sizeof(ovrQuatf));
+    memcpy(&info.HeadPose_Pose_Position, &altPosition, sizeof(ovrVector3f));
+
+    LOGI("ALT Position=(%f, %f, %f)",
+         g_ctx.altManager->getTrackingData().head.pose.position.x,
+         g_ctx.altManager->getTrackingData().head.pose.position.y,
+         g_ctx.altManager->getTrackingData().head.pose.position.z
+    );
+
+    LOGI("ALT Orientation=(%f, %f, %f, %f)",
+         altRotation.x,
+         altRotation.y,
+         altRotation.z,
+         altRotation.w
+    );
+
 
     setControllerInfo(&info, clientsidePrediction ? frame->displayTime : 0.);
     FrameLog(g_ctx.FrameIndex, "Sending tracking info.");

@@ -42,6 +42,7 @@ add_library( # Sets the name of the library.
              src/main/cpp/gltf_model.cpp
              src/main/cpp/utils.cpp
              src/main/cpp/ovr_context.cpp
+			 src/main/cpp/antilatency.cpp
              ../ALVR-common/reedsolomon/rs.c
              ../ALVR-common/common-utils.cpp
              ../ALVR-common/exception.cpp
