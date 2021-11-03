@@ -1,16 +1,21 @@
 [workspace]
+resolver = "2"
 members = [
     "alvr/settings-schema-derive",
     "alvr/settings-schema",
     "alvr/openvr-driver-sys",
-    "alvr/xtask",
+    "alvr/filesystem",
     "alvr/common",
-    "alvr/gui",
+    "alvr/commands",
+    "alvr/session",
+    "alvr/sockets",
+    "alvr/audio",
     "alvr/client",
-    "alvr/filesystem-layout",
     "alvr/server",
     "alvr/launcher",
     "alvr/vrcompositor-wrapper",
     "alvr/vulkan-layer",
-    "alvr/egui_dashboard",
+    "alvr/xtask",
+    "alvr/experiments/client", # needed for bug in cargo-subcommand
+    "alvr/experiments/*",
 ]

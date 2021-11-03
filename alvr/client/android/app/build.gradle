@@ -8,7 +8,7 @@ android {
     defaultConfig {
         applicationId "alvr.client"
         minSdkVersion 24
-        targetSdkVersion 29
+        targetSdkVersion 30
         versionCode 62
         versionName "16.0.0"
         externalNativeBuild {
