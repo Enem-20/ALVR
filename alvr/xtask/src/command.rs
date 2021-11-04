@@ -1,68 +1,70 @@
-use alvr_common::prelude::*;
+use crate::BResult;
 use std::{
     env,
     path::Path,
     process::{Command, Stdio},
 };
 
-pub fn run_as_shell_in(workdir: &Path, shell: &str, shell_flag: &str, cmd: &str) -> StrResult {
+pub fn run_as_shell_in(workdir: &Path, shell: &str, shell_flag: &str, cmd: &str) -> BResult {
     println!("\n> {}", cmd);
 
-    let output = trace_err!(trace_err!(Command::new(shell)
+    let output = Command::new(shell)
         .args(&[shell_flag, cmd])
         .stdout(Stdio::inherit())
         .current_dir(workdir)
-        .spawn())?
-    .wait_with_output())?;
+        .spawn()?
+        .wait_with_output()?;
 
     if output.status.success() {
         Ok(())
     } else {
-        fmt_e!(
+        Err(format!(
             "Command failed: {}",
             String::from_utf8_lossy(&output.stderr)
         )
+        .into())
     }
 }
 
-pub fn run_in(workdir: &Path, cmd: &str) -> StrResult {
+pub fn run_in(workdir: &Path, cmd: &str) -> BResult {
     let shell = if cfg!(windows) { "cmd" } else { "bash" };
     let shell_flag = if cfg!(windows) { "/C" } else { "-c" };
 
     run_as_shell_in(workdir, shell, shell_flag, cmd)
 }
 
-pub fn run(cmd: &str) -> StrResult {
+pub fn run(cmd: &str) -> BResult {
     run_in(&env::current_dir().unwrap(), cmd)
 }
 
 // Bash can be invoked on Windows if WSL is installed
-pub fn run_as_bash_in(workdir: &Path, cmd: &str) -> StrResult {
+pub fn run_as_bash_in(workdir: &Path, cmd: &str) -> BResult {
     run_as_shell_in(workdir, "bash", "-c", cmd)
 }
 
-pub fn run_without_shell(cmd: &str, args: &[&str]) -> StrResult {
+pub fn run_without_shell(cmd: &str, args: &[&str]) -> BResult {
     println!(
         "\n> {}",
         args.iter().fold(String::from(cmd), |s, arg| s + " " + arg)
     );
-    let output = trace_err!(trace_err!(Command::new(cmd)
+    let output = Command::new(cmd)
         .args(args)
         .stdout(Stdio::inherit())
-        .spawn())?
-    .wait_with_output())?;
+        .spawn()?
+        .wait_with_output()?;
 
     if output.status.success() {
         Ok(())
     } else {
-        fmt_e!(
+        Err(format!(
             "Command failed: {}",
             String::from_utf8_lossy(&output.stderr)
         )
+        .into())
     }
 }
 
-pub fn zip(source: &Path) -> StrResult {
+pub fn zip(source: &Path) -> BResult {
     if cfg!(windows) {
         run_without_shell(
             "powershell",
@@ -84,7 +86,7 @@ pub fn zip(source: &Path) -> StrResult {
     }
 }
 
-pub fn unzip(source: &Path, destination: &Path) -> StrResult {
+pub fn unzip(source: &Path, destination: &Path) -> BResult {
     if cfg!(windows) {
         run_without_shell(
             "powershell",
@@ -106,7 +108,7 @@ pub fn unzip(source: &Path, destination: &Path) -> StrResult {
     }
 }
 
-pub fn download(url: &str, destination: &Path) -> StrResult {
+pub fn download(url: &str, destination: &Path) -> BResult {
     run_without_shell(
         "curl",
         &["-o", &destination.to_string_lossy(), "--url", url],

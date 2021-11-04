@@ -31,6 +31,8 @@ mkShell {
     xorg.libX11
     xorg.libXrandr
     libunwind
+    rustc
+    cargo
     python3 # for the xcb crate
     libxkbcommon
   ];

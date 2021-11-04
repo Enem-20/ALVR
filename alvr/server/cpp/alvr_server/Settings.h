@@ -47,12 +47,9 @@ public:
 	float m_flIPD;
 
 	bool m_enableFoveatedRendering;
-	float m_foveationCenterSizeX;
-	float m_foveationCenterSizeY;
-	float m_foveationCenterShiftX;
-	float m_foveationCenterShiftY;
-	float m_foveationEdgeRatioX;
-	float m_foveationEdgeRatioY;
+	float m_foveationStrength;
+	float m_foveationShape;
+	float m_foveationVerticalOffset;
 
 	bool m_enableColorCorrection;
 	float m_brightness;
@@ -69,9 +66,6 @@ public:
 	bool m_adaptiveBitrateUseFrametime;
 	uint64_t m_adaptiveBitrateTargetMaximum;
 	uint64_t m_adaptiveBitrateThreshold;
-	uint64_t m_adaptiveBitrateUpRate;
-	uint64_t m_adaptiveBitrateDownRate;
-	float m_adaptiveBitrateLightLoadThreshold;
 	bool m_use10bitEncoder;
 
 	// Controller configs
@@ -88,11 +82,6 @@ public:
 	bool m_disableController;
 	
 	double m_controllerPoseOffset = 0;
-	bool m_serversidePrediction;
-	float m_linearVelocityCutoff;
-	float m_linearAccelerationCutoff;
-	float m_angularVelocityCutoff;
-	float m_angularAccelerationCutoff;
 
 	float m_OffsetPos[3];
 	bool m_EnableOffsetPos;
@@ -101,10 +90,6 @@ public:
 	double m_leftControllerRotationOffset[3];
 
 	float m_hapticsIntensity;
-	float m_hapticsAmplitudeCurve;
-	float m_hapticsMinDuration;
-	float m_hapticsLowDurationAmplitudeMultiplier;
-	float m_hapticsLowDurationRange;
 
 	int32_t m_causePacketLoss;
 

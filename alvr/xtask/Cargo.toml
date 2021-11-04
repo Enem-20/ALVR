@@ -1,15 +1,12 @@
 [package]
 name = "alvr_xtask"
-version = "16.0.0"
+version = "1.0.0"
 authors = ["alvr-org", "Riccardo Zaglia <riccardo.zaglia5@gmail.com>"]
 license = "MIT"
-edition = "2021"
-rust-version = "1.56"
+edition = "2018"
 
 [dependencies]
-alvr_common = { path = "../common" }
-alvr_filesystem = { path = "../filesystem" }
-
 fs_extra = "1"
 pico-args = "0.4"
 walkdir = "2"
+alvr_filesystem-layout = { path = "../filesystem-layout" }

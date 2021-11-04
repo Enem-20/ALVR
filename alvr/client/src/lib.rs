@@ -9,8 +9,11 @@ mod audio;
 
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 
-use alvr_common::{prelude::*, ALVR_VERSION};
-use alvr_sockets::{HeadsetInfoPacket, PrivateIdentity};
+use alvr_common::{
+    data::{self, HeadsetInfoPacket, PrivateIdentity, ALVR_VERSION},
+    logging,
+    prelude::*,
+};
 use jni::{
     objects::{JClass, JObject, JString},
     JNIEnv,
@@ -49,8 +52,8 @@ pub extern "system" fn Java_com_polygraphene_alvr_OvrActivity_createIdentity(
     _: JClass,
     jidentity: JObject,
 ) {
-    alvr_common::show_err(|| -> StrResult {
-        let identity = alvr_sockets::create_identity(None)?;
+    logging::show_err(|| -> StrResult {
+        let identity = data::create_identity(None)?;
 
         let jhostname = trace_err!(env.new_string(identity.hostname))?.into();
         trace_err!(env.set_field(jidentity, "hostname", "Ljava/lang/String;", jhostname))?;
@@ -87,7 +90,7 @@ pub unsafe extern "system" fn Java_com_polygraphene_alvr_DecoderThread_setWaitin
     _: JObject,
     waiting: bool,
 ) {
-    IDR_PARSED.store(!waiting, Ordering::Relaxed);
+    IDR_PARSED.store(waiting, Ordering::Relaxed);
 }
 
 #[no_mangle]
@@ -112,7 +115,7 @@ pub unsafe extern "system" fn Java_com_polygraphene_alvr_OvrActivity_onCreateNat
 
     legacySend = Some(legacy_send);
 
-    alvr_common::show_err(|| -> StrResult {
+    logging::show_err(|| -> StrResult {
         let result = onCreate(
             env.get_native_interface() as _,
             *activity as _,
@@ -172,7 +175,7 @@ pub unsafe extern "system" fn Java_com_polygraphene_alvr_OvrActivity_onResumeNat
     jscreen_surface: JObject,
     dark_mode: u8,
 ) {
-    alvr_common::show_err(|| -> StrResult {
+    logging::show_err(|| -> StrResult {
         let java_vm = trace_err!(env.get_java_vm())?;
         let activity_ref = trace_err!(env.new_global_ref(jactivity))?;
         let nal_class_ref = trace_err!(env.new_global_ref(nal_class))?;

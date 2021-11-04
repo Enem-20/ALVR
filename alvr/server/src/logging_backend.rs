@@ -1,7 +1,8 @@
-use crate::{FILESYSTEM_LAYOUT, SESSION_MANAGER};
-use alvr_common::{EventSeverity, Raw, ServerEvent};
+use crate::{ALVR_DIR, SESSION_MANAGER};
+use alvr_common::logging;
 use fern::Dispatch;
 use log::LevelFilter;
+use logging::{Event, EventSeverity, Raw};
 use std::fs;
 use tokio::sync::broadcast::Sender;
 
@@ -19,7 +20,7 @@ pub fn init_logging(log_sender: Sender<String>, events_sender: Sender<String>) {
                 log::Level::Debug | log::Level::Trace => EventSeverity::Debug,
             };
 
-            let event = ServerEvent::Raw(Raw {
+            let event = Event::Raw(Raw {
                 timestamp: chrono::Local::now().format("%H:%M:%S.%f").to_string(),
                 severity,
                 content: message.to_string(),
@@ -51,7 +52,7 @@ pub fn init_logging(log_sender: Sender<String>, events_sender: Sender<String>) {
                 .write(true)
                 .create(true)
                 .truncate(true)
-                .open(FILESYSTEM_LAYOUT.session_log())
+                .open(alvr_filesystem_layout::session_log(&ALVR_DIR))
                 .unwrap(),
         );
     } else {
@@ -63,10 +64,10 @@ pub fn init_logging(log_sender: Sender<String>, events_sender: Sender<String>) {
         .chain(
             Dispatch::new()
                 .level(LevelFilter::Error)
-                .chain(fern::log_file(FILESYSTEM_LAYOUT.crash_log()).unwrap()),
+                .chain(fern::log_file(alvr_filesystem_layout::crash_log(&ALVR_DIR)).unwrap()),
         )
         .apply()
         .unwrap();
 
-    alvr_common::set_panic_hook();
+    logging::set_panic_hook();
 }

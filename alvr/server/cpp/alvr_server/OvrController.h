@@ -7,7 +7,7 @@
 class OvrController : public vr::ITrackedDeviceServerDriver
 {
 public:
-	OvrController(bool isLeftHand, int index, float* poseTimeOffset);
+	OvrController(bool isLeftHand, int index);
 
 	virtual ~OvrController() {};
 
@@ -51,7 +51,6 @@ private:
 
 	bool m_isLeftHand;
 	int m_index;
-	float* m_poseTimeOffset;
 
 	vr::VRInputComponentHandle_t m_handles[ALVR_INPUT_COUNT];
 	vr::VRInputComponentHandle_t m_compHaptic;
