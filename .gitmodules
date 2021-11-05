@@ -1,0 +1,3 @@
+[submodule "external/BuildBatsALVR"]
+	path = external/BuildBatsALVR
+	url = https://github.com/Enem-20/BuildBatsALVR.git

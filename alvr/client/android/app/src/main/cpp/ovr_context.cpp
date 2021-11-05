@@ -527,6 +527,7 @@ void sendTrackingInfo(bool clientsidePrediction) {
     frame->frameIndex = g_ctx.FrameIndex;
     frame->fetchTime = getTimestampUs();
 
+    vrapi_SetTrackingSpace(g_ctx.Ovr, VRAPI_TRACKING_SPACE_STAGE);
     // vrapi_GetTimeInSeconds doesn't match getTimestampUs
     frame->displayTime = vrapi_GetTimeInSeconds() + LatencyCollector::Instance().getTrackingPredictionLatency() * 1e-6;
     frame->tracking = vrapi_GetPredictedTracking2(g_ctx.Ovr, frame->displayTime);
@@ -572,9 +573,9 @@ void sendTrackingInfo(bool clientsidePrediction) {
     memcpy(&info.HeadPose_Pose_Position, &altPosition, sizeof(ovrVector3f));
 
     LOGI("ALT Position=(%f, %f, %f)",
-         g_ctx.altManager->getTrackingData().head.pose.position.x,
-         g_ctx.altManager->getTrackingData().head.pose.position.y,
-         g_ctx.altManager->getTrackingData().head.pose.position.z
+         altPosition.x,
+         altPosition.y,
+         altPosition.z
     );
 
     LOGI("ALT Orientation=(%f, %f, %f, %f)",
