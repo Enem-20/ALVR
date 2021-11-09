@@ -16,6 +16,15 @@
 
 using namespace Antilatency;
 
+void AntilatencyManager::initJni(Antilatency::InterfaceContract::IInterface obj, JavaVM* jvm, jobject instance) {
+    auto jni = obj.queryInterface<AndroidJniWrapper::IAndroidJni>();
+    if (jni == nullptr){
+        return;
+    }
+
+    jni.initJni(jvm, instance);
+}
+
 AntilatencyManager::AntilatencyManager(JNIEnv* env, jobject activity) {
 
     m_adnLibrary = InterfaceContract::getLibraryInterface<DeviceNetwork::ILibrary>("libAntilatencyDeviceNetwork.so");
@@ -30,25 +39,32 @@ AntilatencyManager::AntilatencyManager(JNIEnv* env, jobject activity) {
 //
     JavaVM* jvm;
     env->GetJavaVM(&jvm);
-//
-    auto adnJni = m_adnLibrary.queryInterface<AndroidJniWrapper::IAndroidJni>();
-    adnJni.initJni(jvm, activity);
 
-    auto antilatencyStorageClientJni = m_antilatencyStorageLibrary.queryInterface<AndroidJniWrapper::IAndroidJni>();
-    antilatencyStorageClientJni.initJni(jvm, activity);
+    initJni(m_adnLibrary, jvm, activity);
+    initJni(m_altTrackingLibrary, jvm, activity);
+    initJni(m_environmentSelectorLibrary, jvm, activity);
+    initJni(m_antilatencyStorageLibrary, jvm, activity);
+    initJni(m_trackingAlignmentLibrary, jvm, activity);
+//
+//    auto adnJni = m_adnLibrary.queryInterface<AndroidJniWrapper::IAndroidJni>();
+//    adnJni.initJni(jvm, activity);
+//
+//    auto antilatencyStorageClientJni = m_antilatencyStorageLibrary.queryInterface<AndroidJniWrapper::IAndroidJni>();
+//    antilatencyStorageClientJni.initJni(jvm, activity);
 //
     //Set log verbosity level for Antilatency Device Network library.
-    m_adnLibrary.setLogLevel(Antilatency::DeviceNetwork::LogLevel::Trace);
+    //m_adnLibrary.setLogLevel(Antilatency::DeviceNetwork::LogLevel::Trace);
 
     LOGI("Antilatency Device Network ver.: %s", m_adnLibrary.getVersion().data());
     auto filter = m_adnLibrary.createFilter();
 
     //Alt socket USB device ID
-    Antilatency::DeviceNetwork::UsbDeviceFilter antilatencyUsbDeviceType;
-    antilatencyUsbDeviceType.pid = 0x0000;
-    antilatencyUsbDeviceType.vid = Antilatency::DeviceNetwork::UsbVendorId::Antilatency;
+//    Antilatency::DeviceNetwork::UsbDeviceFilter antilatencyUsbDeviceType;
+//    antilatencyUsbDeviceType.pid = 0x0000;
+//    antilatencyUsbDeviceType.vid = Antilatency::DeviceNetwork::UsbVendorId::Antilatency;
 
-    filter.addUsbDevice(antilatencyUsbDeviceType);
+    filter.addUsbDevice(Antilatency::DeviceNetwork::Constants::AllUsbDevices);
+    filter.addIpDevice(Antilatency::DeviceNetwork::Constants::AllIpDevicesIp, Antilatency::DeviceNetwork::Constants::AllIpDevicesMask);
 
     m_deviceNetwork = m_adnLibrary.createNetwork(filter);
 
@@ -75,6 +91,7 @@ AntilatencyManager::~AntilatencyManager() {
 }
 
 void AntilatencyManager::doTracking() {
+        LOGI("doTracking execute");
         //Get current Antilatency Device Network update id. It will be incremented every time any supported device is added or removed.
         auto _updateId = m_deviceNetwork.getUpdateId();
         if(updateId != _updateId){
@@ -87,8 +104,9 @@ void AntilatencyManager::doTracking() {
 
             //Get all currently connected nodes that supports tracking task.
             auto nodes = cotaskConstructor.findSupportedNodes(m_deviceNetwork);
-
+            LOGE("Count of supported nodes=(%i)", nodes.size());
             for(auto node : nodes) {
+                LOGE("Adding nodes=(%i)", nodes.size());
                 //Check if node is idle, we cannot start task on invalid nodes or on nodes that already has task started on it.
                 if(m_deviceNetwork.nodeGetStatus(node) == Antilatency::DeviceNetwork::NodeStatus::Idle) {
                     handleNode(node);
@@ -101,11 +119,14 @@ void AntilatencyManager::doTracking() {
                 LOGALT("Tracking node offline: %s", tracker.serialNumber.data());
                 return true;
             } else {
+                LOGI("need to update tracker");
                 updateTracker(tracker);
                 return false;
             }
         });
+        LOGI("Count of trackers=(%i)", m_trackers.size());
         m_trackers.erase(rmIter, m_trackers.end());
+
 }
 
 void AntilatencyManager::startTrackingAlignment(){
@@ -127,7 +148,7 @@ void AntilatencyManager::stopTrackingAlignment(){
 
 void AntilatencyManager::handleNode(Antilatency::DeviceNetwork::NodeHandle node) {
     uint8_t trackerType = AntilatencyTracker::TYPE_UNKNOWN;
-
+    LOGE("");
     try {
         std::string serialNumber = m_deviceNetwork.nodeGetStringProperty(node, DeviceNetwork::Interop::Constants::HardwareSerialNumberKey);
         std::string tag = m_deviceNetwork.nodeGetStringProperty(m_deviceNetwork.nodeGetParent(node), "Tag");
@@ -157,7 +178,7 @@ void AntilatencyManager::updateTracker(AntilatencyTracker &tracker) {
     if(tracker.cotask.isTaskFinished()) {
         return;
     }
-
+    LOGI("tracking updating");
     switch (tracker.type) {
         case AntilatencyTracker::TYPE_HMD:
             m_antilatencyTrackingData.head = proceedTrackingAlignment(tracker);

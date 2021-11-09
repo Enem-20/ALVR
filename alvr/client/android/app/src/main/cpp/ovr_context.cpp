@@ -560,29 +560,28 @@ void sendTrackingInfo(bool clientsidePrediction) {
     auto extrapolationTime = frame->tracking.HeadPose.PredictionInSeconds;
 
     g_ctx.altManager->setRigPose(position, rotation, extrapolationTime);
-    auto altRotation = g_ctx.altManager->getTrackingData().head.pose.rotation;
-    auto altPosition = g_ctx.altManager->getTrackingData().head.pose.position;
+    auto altPose = g_ctx.altManager->getTrackingData().head.pose;
 
-    altPosition.z *= -1.0f;
+    altPose.rotation.z *= -1.0f;
 
     // matching axis orientation
-    altRotation.w *= -1.0f;
-    altRotation.z *= -1.0f;
+    altPose.rotation.w *= -1.0f;
+    altPose.rotation.z *= -1.0f;
 
-    memcpy(&info.HeadPose_Pose_Orientation, &altRotation, sizeof(ovrQuatf));
-    memcpy(&info.HeadPose_Pose_Position, &altPosition, sizeof(ovrVector3f));
+    memcpy(&info.HeadPose_Pose_Orientation, &altPose.rotation, sizeof(ovrQuatf));
+    memcpy(&info.HeadPose_Pose_Position, &altPose.position, sizeof(ovrVector3f));
 
     LOGI("ALT Position=(%f, %f, %f)",
-         altPosition.x,
-         altPosition.y,
-         altPosition.z
+         altPose.position.x,
+         altPose.position.y,
+         altPose.position.z
     );
 
     LOGI("ALT Orientation=(%f, %f, %f, %f)",
-         altRotation.x,
-         altRotation.y,
-         altRotation.z,
-         altRotation.w
+         altPose.rotation.x,
+         altPose.rotation.y,
+         altPose.rotation.z,
+         altPose.rotation.w
     );
 
 

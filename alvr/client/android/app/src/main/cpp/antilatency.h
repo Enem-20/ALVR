@@ -58,6 +58,7 @@ public:
     void setRigPose(T rigPosition, A rigRotation, double extrapolationTime);
 
 private:
+    void initJni(Antilatency::InterfaceContract::IInterface obj, JavaVM* jvm, jobject instance);
     void doTracking();
 
     void handleNode(Antilatency::DeviceNetwork::NodeHandle node);
@@ -79,7 +80,7 @@ private:
 
     Antilatency::Math::floatP3Q m_rigPose;
 
-    uint32_t updateId = 0;
+    uint32_t updateId = -1;
 
     float m_bQuality = 0.4f;
     bool m_altInitialPositionApplied = false;
