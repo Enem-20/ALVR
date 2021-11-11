@@ -562,7 +562,7 @@ void sendTrackingInfo(bool clientsidePrediction) {
     g_ctx.altManager->setRigPose(position, rotation, extrapolationTime);
     auto altPose = g_ctx.altManager->getTrackingData().head.pose;
 
-    altPose.rotation.z *= -1.0f;
+    altPose.position.z *= -1.0f;
 
     // matching axis orientation
     altPose.rotation.w *= -1.0f;
