@@ -30,7 +30,7 @@
 
 #include <vulkan/vk_layer.h>
 
-#include "settings.h"
+#include "alvr_server/Settings.h"
 #include "device_api.hpp"
 #include "private_data.hpp"
 #include "surface_api.hpp"
@@ -376,9 +376,6 @@ wsi_layer_vkEnumerateInstanceLayerProperties(uint32_t *pCount, VkLayerProperties
 #define GET_PROC_ADDR(func)                                                                        \
     if (!strcmp(funcName, #func))                                                                  \
         return (PFN_vkVoidFunction)&wsi_layer_##func;
-
-
-const char *g_sessionPath;
 
 VK_LAYER_EXPORT PFN_vkVoidFunction VKAPI_CALL wsi_layer_vkGetDeviceProcAddr(VkDevice device,
                                                                             const char *funcName) {

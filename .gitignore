@@ -12,6 +12,7 @@ Release
 
 # editor
 .vs/
+external/
 
 # NuGet Packages
 *.nupkg

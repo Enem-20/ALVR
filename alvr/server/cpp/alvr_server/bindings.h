@@ -6,13 +6,12 @@ extern "C" const unsigned char *FRAME_RENDER_PS_CSO_PTR;
 extern "C" unsigned int FRAME_RENDER_PS_CSO_LEN;
 extern "C" const unsigned char *QUAD_SHADER_CSO_PTR;
 extern "C" unsigned int QUAD_SHADER_CSO_LEN;
-extern "C" const unsigned char *COMPRESS_AXIS_ALIGNED_CSO_PTR;
-extern "C" unsigned int COMPRESS_AXIS_ALIGNED_CSO_LEN;
+extern "C" const unsigned char *COMPRESS_SLICES_CSO_PTR;
+extern "C" unsigned int COMPRESS_SLICES_CSO_LEN;
 extern "C" const unsigned char *COLOR_CORRECTION_CSO_PTR;
 extern "C" unsigned int COLOR_CORRECTION_CSO_LEN;
 
-extern "C" const char *g_sessionPath;
-extern "C" const char *g_driverRootDir;
+extern "C" const char *g_alvrDir;
 
 extern "C" void (*LogError)(const char *stringPtr);
 extern "C" void (*LogWarn)(const char *stringPtr);

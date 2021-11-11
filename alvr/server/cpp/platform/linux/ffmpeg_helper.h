@@ -46,7 +46,6 @@ public:
   struct dispatch
   {
     PFN_vkImportSemaphoreFdKHR vkImportSemaphoreFdKHR;
-    int getVkHeaderVersion() const { return VK_HEADER_VERSION; }
   };
 
   VkContext(const char* device, AVDictionary* opt = nullptr);

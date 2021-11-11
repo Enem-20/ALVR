@@ -1,14 +1,21 @@
 use crate::{
-    connection_utils, ClientListAction, CLIENTS_UPDATED_NOTIFIER, MAYBE_LEGACY_SENDER,
+    connection_utils, openvr, ClientListAction, CLIENTS_UPDATED_NOTIFIER, MAYBE_LEGACY_SENDER,
     RESTART_NOTIFIER, SESSION_MANAGER,
 };
-use alvr_audio::{AudioDevice, AudioDeviceType};
-use alvr_common::prelude::*;
-use alvr_session::{CodecType, FrameSize, OpenvrConfig};
-use alvr_sockets::{
-    spawn_cancelable, ClientConfigPacket, ClientControlPacket, ControlSocketReceiver,
-    ControlSocketSender, HeadsetInfoPacket, PeerType, PlayspaceSyncPacket, ProtoControlSocket,
-    ServerControlPacket, StreamSocketBuilder, LEGACY,
+use alvr_common::{
+    audio::AudioDevice,
+    audio::{self, AudioDeviceType},
+    data::{
+        AudioDeviceId, ClientConfigPacket, ClientControlPacket, CodecType, FrameSize,
+        HeadsetInfoPacket, OpenvrConfig, PlayspaceSyncPacket, ServerControlPacket, ALVR_VERSION,
+    },
+    logging,
+    prelude::*,
+    sockets::{
+        ControlSocketReceiver, ControlSocketSender, PeerType, ProtoControlSocket,
+        StreamSocketBuilder, LEGACY,
+    },
+    spawn_cancelable,
 };
 use futures::future::{BoxFuture, Either};
 use nalgebra::Translation3;
@@ -170,12 +177,12 @@ async fn client_handshake(
                 microphone_desc.input_device_id,
                 AudioDeviceType::VirtualMicrophoneInput,
             )?;
-            if alvr_audio::is_same_device(&game_audio_device, &microphone_device) {
+            if audio::is_same_device(&game_audio_device, &microphone_device) {
                 return fmt_e!("Game audio and microphone cannot point to the same device!");
             }
         }
 
-        trace_err!(alvr_audio::get_sample_rate(&game_audio_device))?
+        trace_err!(audio::get_sample_rate(&game_audio_device))?
     } else {
         0
     };
@@ -261,21 +268,6 @@ async fn client_handshake(
             .adaptive_bitrate
             .content
             .latency_threshold,
-        bitrate_up_rate: session_settings
-            .video
-            .adaptive_bitrate
-            .content
-            .bitrate_up_rate,
-        bitrate_down_rate: session_settings
-            .video
-            .adaptive_bitrate
-            .content
-            .bitrate_down_rate,
-        bitrate_light_load_threshold: session_settings
-            .video
-            .adaptive_bitrate
-            .content
-            .bitrate_light_load_threshold,
         controllers_tracking_system_name: session_settings
             .headset
             .controllers
@@ -341,31 +333,6 @@ async fn client_handshake(
         position_offset: settings.headset.position_offset,
         tracking_frame_offset: settings.headset.tracking_frame_offset,
         controller_pose_offset,
-        serverside_prediction: session_settings
-            .headset
-            .controllers
-            .content
-            .serverside_prediction,
-        linear_velocity_cutoff: session_settings
-            .headset
-            .controllers
-            .content
-            .linear_velocity_cutoff,
-        linear_acceleration_cutoff: session_settings
-            .headset
-            .controllers
-            .content
-            .linear_acceleration_cutoff,
-        angular_velocity_cutoff: session_settings
-            .headset
-            .controllers
-            .content
-            .angular_velocity_cutoff,
-        angular_acceleration_cutoff: session_settings
-            .headset
-            .controllers
-            .content
-            .angular_acceleration_cutoff,
         position_offset_left: session_settings
             .headset
             .controllers
@@ -381,62 +348,19 @@ async fn client_handshake(
             .controllers
             .content
             .haptics_intensity,
-        haptics_amplitude_curve: session_settings
-            .headset
-            .controllers
-            .content
-            .haptics_amplitude_curve,
-        haptics_min_duration: session_settings
-            .headset
-            .controllers
-            .content
-            .haptics_min_duration,
-        haptics_low_duration_amplitude_multiplier: session_settings
-            .headset
-            .controllers
-            .content
-            .haptics_low_duration_amplitude_multiplier,
-        haptics_low_duration_range: session_settings
-            .headset
-            .controllers
-            .content
-            .haptics_low_duration_range,
         use_headset_tracking_system: session_settings
             .headset
             .controllers
             .content
             .use_headset_tracking_system,
         enable_foveated_rendering: session_settings.video.foveated_rendering.enabled,
-        foveation_center_size_x: session_settings
+        foveation_strength: session_settings.video.foveated_rendering.content.strength,
+        foveation_shape: session_settings.video.foveated_rendering.content.shape,
+        foveation_vertical_offset: session_settings
             .video
             .foveated_rendering
             .content
-            .center_size_x,
-        foveation_center_size_y: session_settings
-            .video
-            .foveated_rendering
-            .content
-            .center_size_y,
-        foveation_center_shift_x: session_settings
-            .video
-            .foveated_rendering
-            .content
-            .center_shift_x,
-        foveation_center_shift_y: session_settings
-            .video
-            .foveated_rendering
-            .content
-            .center_shift_y,
-        foveation_edge_ratio_x: session_settings
-            .video
-            .foveated_rendering
-            .content
-            .edge_ratio_x,
-        foveation_edge_ratio_y: session_settings
-            .video
-            .foveated_rendering
-            .content
-            .edge_ratio_y,
+            .vertical_offset,
         enable_color_correction: session_settings.video.color_correction.enabled,
         brightness: session_settings.video.color_correction.content.brightness,
         contrast: session_settings.video.color_correction.content.contrast,
@@ -552,7 +476,7 @@ async fn connection_pipeline() -> StrResult {
 
     let ConnectionInfo {
         client_ip,
-        version: _,
+        version,
         control_sender,
         mut control_receiver,
     } = connection_info;
@@ -588,7 +512,7 @@ async fn connection_pipeline() -> StrResult {
         }
     };
 
-    log_event(ServerEvent::ClientConnected);
+    log_event(Event::ClientConnected);
 
     {
         let on_connect_script = settings.connection.on_connect_script;
@@ -609,27 +533,22 @@ async fn connection_pipeline() -> StrResult {
 
     let game_audio_loop: BoxFuture<_> = if let Switch::Enabled(desc) = settings.audio.game_audio {
         let device = AudioDevice::new(desc.device_id, AudioDeviceType::Output)?;
-        let sample_rate = alvr_audio::get_sample_rate(&device)?;
+        let sample_rate = audio::get_sample_rate(&device)?;
         let sender = stream_socket.request_stream().await?;
         let mute_when_streaming = desc.mute_when_streaming;
 
         Box::pin(async move {
             #[cfg(windows)]
-            crate::openvr::set_game_output_audio_device_id(alvr_audio::get_windows_device_id(
-                &device,
-            )?);
+            openvr::set_game_output_audio_device_id(audio::get_windows_device_id(&device)?);
 
-            alvr_audio::record_audio_loop(device, 2, sample_rate, mute_when_streaming, sender)
-                .await?;
+            audio::record_audio_loop(device, 2, sample_rate, mute_when_streaming, sender).await?;
 
             #[cfg(windows)]
             {
-                let default_device = AudioDevice::new(
-                    alvr_session::AudioDeviceId::Default,
-                    AudioDeviceType::Output,
-                )?;
-                let default_device_id = alvr_audio::get_windows_device_id(&default_device)?;
-                crate::openvr::set_game_output_audio_device_id(default_device_id);
+                let default_device =
+                    AudioDevice::new(AudioDeviceId::Default, AudioDeviceType::Output)?;
+                let default_device_id = audio::get_windows_device_id(&default_device)?;
+                openvr::set_game_output_audio_device_id(default_device_id);
             }
 
             Ok(())
@@ -653,11 +572,11 @@ async fn connection_pipeline() -> StrResult {
                     matching_input_device_name: input_device.name()?,
                 },
             )?;
-            let microphone_device_id = alvr_audio::get_windows_device_id(&microphone_device)?;
-            crate::openvr::set_headset_microphone_audio_device_id(microphone_device_id);
+            let microphone_device_id = audio::get_windows_device_id(&microphone_device)?;
+            openvr::set_headset_microphone_audio_device_id(microphone_device_id);
         }
 
-        Box::pin(alvr_audio::play_audio_loop(
+        Box::pin(audio::play_audio_loop(
             input_device,
             1,
             desc.sample_rate,
@@ -735,7 +654,7 @@ async fn connection_pipeline() -> StrResult {
                     .send(&ServerControlPacket::KeepAlive)
                     .await;
                 if let Err(e) = res {
-                    log_event(ServerEvent::ClientDisconnected);
+                    log_event(Event::ClientDisconnected);
                     info!("Client disconnected. Cause: {}", e);
                     break Ok(());
                 }
@@ -755,7 +674,7 @@ async fn connection_pipeline() -> StrResult {
                 Ok(ClientControlPacket::RequestIdr) => unsafe { crate::RequestIDR() },
                 Ok(_) => (),
                 Err(e) => {
-                    log_event(ServerEvent::ClientDisconnected);
+                    log_event(Event::ClientDisconnected);
                     info!("Client disconnected. Cause: {}", e);
                     break;
                 }
@@ -768,7 +687,7 @@ async fn connection_pipeline() -> StrResult {
     // Run many tasks concurrently. Threading is managed by the runtime, for best performance.
     tokio::select! {
         res = spawn_cancelable(stream_socket.receive_loop()) => {
-            log_event(ServerEvent::ClientDisconnected);
+            log_event(Event::ClientDisconnected);
             if let Err(e) = res {
                 info!("Client disconnected. Cause: {}", e);
             }
@@ -801,7 +720,7 @@ pub async fn connection_lifecycle_loop() {
     loop {
         tokio::join!(
             async {
-                alvr_common::show_err(connection_pipeline().await);
+                logging::show_err(connection_pipeline().await);
 
                 // let any running task or socket shutdown
                 time::sleep(CLEANUP_PAUSE).await;

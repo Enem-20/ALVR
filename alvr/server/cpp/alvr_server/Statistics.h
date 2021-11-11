@@ -25,8 +25,6 @@ public:
 		m_framesInSecond = 0;
 		m_framesPrevious = 0;
 
-		m_totalLatency = 0;
-
 		m_encodeLatencyTotalUs = 0;
 		m_encodeLatencyMin = 0;
 		m_encodeLatencyMax = 0;
@@ -58,16 +56,6 @@ public:
 		m_encodeSampleCount++;
 	}
 
-	void NetworkTotal(uint64_t latencyUs) {
-		if (latencyUs > 5e5)
-			latencyUs = 5e5;
-		if (m_totalLatency == 0) {
-			m_totalLatency = latencyUs;
-		} else {
-			m_totalLatency = latencyUs * 0.05 + m_totalLatency * 0.95;
-		}
-	}
-
 	void NetworkSend(uint64_t latencyUs) {
 		if (latencyUs > 5e5)
 			latencyUs = 5e5;
@@ -96,9 +84,6 @@ public:
 	float GetFPS() {
 		return m_framesPrevious;
 	}
-	uint64_t GetTotalLatencyAverage() {
-		return m_totalLatency;
-	}
 	uint64_t GetEncodeLatencyAverage() {
 		return m_encodeLatencyAveragePrev;
 	}
@@ -111,15 +96,14 @@ public:
 			uint64_t latencyUs = m_sendLatency;
 			if (latencyUs != 0) {
 				if (latencyUs > m_adaptiveBitrateTarget + m_adaptiveBitrateThreshold) {
-					if (m_bitrate < 5 + m_adaptiveBitrateDownRate)
-						m_bitrate = 5;
-					else
-						m_bitrate -= m_adaptiveBitrateDownRate;
+					m_bitrate -= 3;
 				} else if (latencyUs < m_adaptiveBitrateTarget - m_adaptiveBitrateThreshold) {
-					if (m_bitrate > m_adaptiveBitrateMaximum - m_adaptiveBitrateDownRate)
-						m_bitrate = m_adaptiveBitrateMaximum;
-					else if (m_bitsSentInSecondPrev * 1e-6 > m_bitrate * m_adaptiveBitrateLightLoadThreshold)
-						m_bitrate += m_adaptiveBitrateUpRate;
+					m_bitrate += 1;
+				}
+				if (m_bitrate > m_adaptiveBitrateMaximum) {
+					m_bitrate = m_adaptiveBitrateMaximum;
+				} else if (m_bitrate < 5) {
+					m_bitrate = 5;
 				}
 			}
 			if (m_bitrateUpdated != m_bitrate) {
@@ -129,26 +113,6 @@ public:
 		}
 		return false;
 	}
-
-	void Reset() {
-		for(int i = 0; i < 6; i++) {
-			m_statistics[i] = 0;
-		}
-		m_statisticsCount = 0;
-	}
-	void Add(float total, float encode, float send, float decode, float fps, float ping) {
-		m_statistics[0] += total;
-		m_statistics[1] += encode;
-		m_statistics[2] += send;
-		m_statistics[3] += decode;
-		m_statistics[4] += fps;
-		m_statistics[5] += ping;
-		m_statisticsCount++;
-	}
-	float Get(uint32_t i) {
-		return (m_statistics[i] / m_statisticsCount);
-	}
-
 private:
 	void ResetSecond() {
 		m_packetsSentInSecondPrev = m_packetsSentInSecond;
@@ -166,13 +130,11 @@ private:
 		m_encodeLatencyMin = UINT64_MAX;
 		m_encodeLatencyMax = 0;
 
-		if (m_adaptiveBitrateUseFrametime) {
-			if (m_framesPrevious > 0) {
-				m_adaptiveBitrateTarget = 1e6 / m_framesPrevious;
-			}
-			if (m_adaptiveBitrateTarget > m_adaptiveBitrateTargetMaximum) {
-				m_adaptiveBitrateTarget = m_adaptiveBitrateTargetMaximum;
-			}
+		if (m_framesPrevious > 0) {
+			m_adaptiveBitrateTarget = 1e6 / m_framesPrevious;
+		}
+		if (m_adaptiveBitrateTarget > m_adaptiveBitrateTargetMaximum) {
+			m_adaptiveBitrateTarget = m_adaptiveBitrateTargetMaximum;
 		}
 	}
 
@@ -195,8 +157,6 @@ private:
 	uint32_t m_framesInSecond;
 	uint32_t m_framesPrevious;
 
-	uint64_t m_totalLatency = 0;
-
 	uint64_t m_encodeLatencyTotalUs;
 	uint64_t m_encodeLatencyMin;
 	uint64_t m_encodeLatencyMax;
@@ -217,14 +177,5 @@ private:
 	uint64_t m_adaptiveBitrateTargetMaximum = Settings::Instance().m_adaptiveBitrateTargetMaximum;
 	uint64_t m_adaptiveBitrateThreshold = Settings::Instance().m_adaptiveBitrateThreshold;
 
-	uint64_t m_adaptiveBitrateUpRate = Settings::Instance().m_adaptiveBitrateUpRate;
-	uint64_t m_adaptiveBitrateDownRate = Settings::Instance().m_adaptiveBitrateDownRate;
-
-	float m_adaptiveBitrateLightLoadThreshold = Settings::Instance().m_adaptiveBitrateLightLoadThreshold;
-
 	time_t m_current;
-	
-	// Total/Encode/Send/Decode/ClientFPS/Ping
-	float m_statistics[6];
-	uint64_t m_statisticsCount = 0;
 };

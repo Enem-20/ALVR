@@ -129,13 +129,12 @@ const unsigned char *FRAME_RENDER_PS_CSO_PTR;
 unsigned int FRAME_RENDER_PS_CSO_LEN;
 const unsigned char *QUAD_SHADER_CSO_PTR;
 unsigned int QUAD_SHADER_CSO_LEN;
-const unsigned char *COMPRESS_AXIS_ALIGNED_CSO_PTR;
-unsigned int COMPRESS_AXIS_ALIGNED_CSO_LEN;
+const unsigned char *COMPRESS_SLICES_CSO_PTR;
+unsigned int COMPRESS_SLICES_CSO_LEN;
 const unsigned char *COLOR_CORRECTION_CSO_PTR;
 unsigned int COLOR_CORRECTION_CSO_LEN;
 
-const char *g_sessionPath;
-const char *g_driverRootDir;
+const char *g_alvrDir;
 
 void (*LogError)(const char *stringPtr);
 void (*LogWarn)(const char *stringPtr);

@@ -1,5 +1,5 @@
 use crate::command::date_utc_yyyymmdd;
-use alvr_filesystem as afs;
+use crate::workspace_dir;
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -34,7 +34,7 @@ pub fn version() -> String {
 }
 
 fn bump_client_gradle_version(new_version: &str, is_nightly: bool) {
-    let gradle_file_path = afs::workspace_dir()
+    let gradle_file_path = workspace_dir()
         .join("alvr/client/android/app")
         .join("build.gradle");
     let file_content = fs::read_to_string(&gradle_file_path).unwrap();
@@ -72,7 +72,7 @@ fn bump_cargo_version(crate_dir_name: &str, new_version: &str) {
 }
 
 fn bump_rpm_spec_version(new_version: &str, is_nightly: bool) {
-    let spec_path = afs::workspace_dir().join("packaging/rpm/alvr.spec");
+    let spec_path = workspace_dir().join("packaging/rpm/alvr.spec");
     let spec = fs::read_to_string(&spec_path).unwrap();
 
     // If there's a '-', split the version around it
@@ -80,7 +80,14 @@ fn bump_rpm_spec_version(new_version: &str, is_nightly: bool) {
         if new_version.contains('-') {
             let (_, tmp_start, mut tmp_end) = split_string(new_version, "", '-');
             tmp_end.remove(0);
-            (tmp_start, format!("0.0.1{}", tmp_end))
+            (
+                tmp_start,
+                if is_nightly {
+                    format!("0.0.1{}+nightly.{}", tmp_end, date_utc_yyyymmdd())
+                } else {
+                    format!("0.0.1{}", tmp_end)
+                },
+            )
         } else {
             (new_version.to_string(), "1.0.0".to_string())
         }
@@ -95,28 +102,10 @@ fn bump_rpm_spec_version(new_version: &str, is_nightly: bool) {
     let spec = format!("{}{}{}", file_start, version_end, file_end);
 
     // Replace Source in github URL
-    let spec = {
-        if is_nightly {
-            spec
-        } else {
-            // Grab version (ex: https://github.com/alvr-org/ALVR/archive/refs/tags/v16.0.0-rc1.tar.gz)
-            let (file_start, _, file_end) = split_string(&spec, "refs/tags/v", 't');
-            format!("{}{}.{}", file_start, new_version, file_end)
-        }
-    };
+    let (file_start, _, file_end) = split_string(&spec, "refs/tags/v", 't');
+    let spec = format!("{}{}.{}", file_start, new_version, file_end);
 
     fs::write(spec_path, spec).unwrap();
-}
-
-fn bump_deb_control_version(new_version: &str) {
-    let control_path = afs::workspace_dir().join("packaging/deb/control");
-    let control = fs::read_to_string(&control_path).unwrap();
-
-    // Replace Version
-    let (file_start, _, file_end) = split_string(&control, "\nVersion: ", '\n');
-    let control = format!("{}{}{}", file_start, new_version, file_end);
-
-    fs::write(control_path, control).unwrap();
 }
 
 pub fn bump_version(maybe_version: Option<String>, is_nightly: bool) {
@@ -126,25 +115,12 @@ pub fn bump_version(maybe_version: Option<String>, is_nightly: bool) {
         version = format!("{}+nightly.{}", version, date_utc_yyyymmdd());
     }
 
-    for dir_name in [
-        "audio",
-        "client",
-        "commands",
-        "common",
-        "filesystem",
-        "launcher",
-        "server",
-        "session",
-        "sockets",
-        "vrcompositor-wrapper",
-        "vulkan-layer",
-        "xtask",
-    ] {
-        bump_cargo_version(dir_name, &version);
-    }
     bump_client_gradle_version(&version, is_nightly);
+    bump_cargo_version("common", &version);
+    bump_cargo_version("server", &version);
+    bump_cargo_version("launcher", &version);
+    bump_cargo_version("client", &version);
     bump_rpm_spec_version(&version, is_nightly);
-    bump_deb_control_version(&version);
 
     println!("Git tag:\nv{}", version);
 }

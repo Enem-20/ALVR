@@ -35,7 +35,7 @@ using namespace gl_render_utils;
 
 const chrono::duration<float> MENU_BUTTON_LONG_PRESS_DURATION = 5s;
 const uint32_t ovrButton_Unknown1 = 0x01000000;
-const int MAXIMUM_TRACKING_FRAMES = 360;
+const int MAXIMUM_TRACKING_FRAMES = 180;
 
 struct TrackingFrame {
     ovrTracking2 tracking;
@@ -245,9 +245,6 @@ uint64_t mapButtons(ovrInputTrackedRemoteCapabilities *remoteCapabilities,
         if (remoteInputState->Touches & ovrTouch_Joystick) {
             buttons |= ALVR_BUTTON_FLAG(ALVR_INPUT_JOYSTICK_TOUCH);
         }
-        if (remoteInputState->Touches & ovrTouch_ThumbRest) {
-            buttons |= ALVR_BUTTON_FLAG(ALVR_INPUT_THUMB_REST_TOUCH);
-        }
     } else {
         // GearVR or Oculus Go Controller
         if (remoteInputState->Buttons & ovrButton_A) {
@@ -346,26 +343,14 @@ void setControllerInfo(TrackingInfo *packet, double displayTime) {
                     c.handFingerConfidences |=
                             handPose.FingerConfidences[i] == ovrConfidence_HIGH ? (1 << i) : 0;
                 }
-                if (handPose.Status&ovrHandTrackingStatus_Tracked) {
-                    memcpy(&c.boneRootOrientation, &handPose.RootPose.Orientation,
-                           sizeof(handPose.RootPose.Orientation));
-                    memcpy(&c.boneRootPosition, &handPose.RootPose.Position,
-                           sizeof(handPose.RootPose.Position));
-                    for (int i = 0; i < ovrHandBone_MaxSkinnable; i++) {
-                        memcpy(&c.boneRotations[i], &handPose.BoneRotations[i],
-                               sizeof(handPose.BoneRotations[i]));
-                    }
-                    memcpy(&g_ctx.lastHandPose[controller], &handPose,
-                           sizeof(handPose));
-                } else if (g_ctx.lastHandPose[controller].Status&ovrHandTrackingStatus_Tracked) {
-                    memcpy(&c.boneRootOrientation, &g_ctx.lastHandPose[controller].RootPose.Orientation,
-                           sizeof(g_ctx.lastHandPose[controller].RootPose.Orientation));
-                    memcpy(&c.boneRootPosition, &g_ctx.lastHandPose[controller].RootPose.Position,
-                           sizeof(g_ctx.lastHandPose[controller].RootPose.Position));
-                    for (int i = 0; i < ovrHandBone_MaxSkinnable; i++) {
-                        memcpy(&c.boneRotations[i], &g_ctx.lastHandPose[controller].BoneRotations[i],
-                               sizeof(g_ctx.lastHandPose[controller].BoneRotations[i]));
-                    }
+
+                memcpy(&c.boneRootOrientation, &handPose.RootPose.Orientation,
+                       sizeof(handPose.RootPose.Orientation));
+                memcpy(&c.boneRootPosition, &handPose.RootPose.Position,
+                       sizeof(handPose.RootPose.Position));
+                for (int i = 0; i < ovrHandBone_MaxSkinnable; i++) {
+                    memcpy(&c.boneRotations[i], &handPose.BoneRotations[i],
+                           sizeof(handPose.BoneRotations[i]));
                 }
             }
             controller++;
@@ -466,29 +451,13 @@ void setControllerInfo(TrackingInfo *packet, double displayTime) {
                 LOG("vrapi_GetInputTrackingState failed. Device was disconnected?");
             } else {
 
-                if (tracking.Status&VRAPI_TRACKING_STATUS_ORIENTATION_TRACKED) {
-                    memcpy(&c.orientation,
-                           &tracking.HeadPose.Pose.Orientation,
-                           sizeof(tracking.HeadPose.Pose.Orientation));
-                    memcpy(&g_ctx.lastTrackingRot[controller],
-                           &tracking,
-                           sizeof(tracking));
-                } else if (g_ctx.lastTrackingRot[controller].Status&VRAPI_TRACKING_STATUS_ORIENTATION_TRACKED)
-                    memcpy(&c.orientation,
-                           &g_ctx.lastTrackingRot[controller].HeadPose.Pose.Orientation,
-                           sizeof(g_ctx.lastTrackingRot[controller].HeadPose.Pose.Orientation));
+                memcpy(&c.orientation,
+                       &tracking.HeadPose.Pose.Orientation,
+                       sizeof(tracking.HeadPose.Pose.Orientation));
 
-                if (tracking.Status&VRAPI_TRACKING_STATUS_POSITION_TRACKED) {
-                    memcpy(&c.position,
-                           &tracking.HeadPose.Pose.Position,
-                           sizeof(tracking.HeadPose.Pose.Position));
-                    memcpy(&g_ctx.lastTrackingPos[controller],
-                           &tracking,
-                           sizeof(tracking));
-                } else if (g_ctx.lastTrackingPos[controller].Status&VRAPI_TRACKING_STATUS_POSITION_TRACKED)
-                    memcpy(&c.position,
-                           &g_ctx.lastTrackingPos[controller].HeadPose.Pose.Position,
-                           sizeof(g_ctx.lastTrackingPos[controller].HeadPose.Pose.Position));
+                memcpy(&c.position,
+                       &tracking.HeadPose.Pose.Position,
+                       sizeof(tracking.HeadPose.Pose.Position));
 
                 memcpy(&c.angularVelocity,
                        &tracking.HeadPose.AngularVelocity,
@@ -558,12 +527,10 @@ void sendTrackingInfo(bool clientsidePrediction) {
     frame->frameIndex = g_ctx.FrameIndex;
     frame->fetchTime = getTimestampUs();
 
+    vrapi_SetTrackingSpace(g_ctx.Ovr, VRAPI_TRACKING_SPACE_STAGE);
     // vrapi_GetTimeInSeconds doesn't match getTimestampUs
     frame->displayTime = vrapi_GetTimeInSeconds() + LatencyCollector::Instance().getTrackingPredictionLatency() * 1e-6;
     frame->tracking = vrapi_GetPredictedTracking2(g_ctx.Ovr, frame->displayTime);
-
-    // sort of hacky, SteamVR will predict the position while the orientation is predicted from the client
-    ovrTracking2 trackingRaw = vrapi_GetPredictedTracking2(g_ctx.Ovr, 0.);
 
     {
         std::lock_guard<decltype(g_ctx.trackingFrameMutex)> lock(g_ctx.trackingFrameMutex);
@@ -593,29 +560,28 @@ void sendTrackingInfo(bool clientsidePrediction) {
     auto extrapolationTime = frame->tracking.HeadPose.PredictionInSeconds;
 
     g_ctx.altManager->setRigPose(position, rotation, extrapolationTime);
-    auto altRotation = g_ctx.altManager->getTrackingData().head.pose.rotation;
-    auto altPosition = g_ctx.altManager->getTrackingData().head.pose.position;
+    auto altPose = g_ctx.altManager->getTrackingData().head.pose;
 
-    altPosition.z *= -1.0f;
+    altPose.position.z *= -1.0f;
 
     // matching axis orientation
-    altRotation.w *= -1.0f;
-    altRotation.z *= -1.0f;
+    altPose.rotation.w *= -1.0f;
+    altPose.rotation.z *= -1.0f;
 
-    memcpy(&info.HeadPose_Pose_Orientation, &altRotation, sizeof(ovrQuatf));
-    memcpy(&info.HeadPose_Pose_Position, &altPosition, sizeof(ovrVector3f));
+    memcpy(&info.HeadPose_Pose_Orientation, &altPose.rotation, sizeof(ovrQuatf));
+    memcpy(&info.HeadPose_Pose_Position, &altPose.position, sizeof(ovrVector3f));
 
     LOGI("ALT Position=(%f, %f, %f)",
-         g_ctx.altManager->getTrackingData().head.pose.position.x,
-         g_ctx.altManager->getTrackingData().head.pose.position.y,
-         g_ctx.altManager->getTrackingData().head.pose.position.z
+         altPose.position.x,
+         altPose.position.y,
+         altPose.position.z
     );
 
     LOGI("ALT Orientation=(%f, %f, %f, %f)",
-         altRotation.x,
-         altRotation.y,
-         altRotation.z,
-         altRotation.w
+         altPose.rotation.x,
+         altPose.rotation.y,
+         altPose.rotation.z,
+         altPose.rotation.w
     );
 
 
@@ -707,11 +673,10 @@ void onStreamStartNative() {
     ovrRenderer_Destroy(&g_ctx.Renderer);
     ovrRenderer_Create(&g_ctx.Renderer, g_ctx.streamConfig.eyeWidth, g_ctx.streamConfig.eyeHeight,
                        g_ctx.streamTexture.get(), g_ctx.loadingTexture,
-                       {g_ctx.streamConfig.enableFoveation,
-                        g_ctx.streamConfig.eyeWidth, g_ctx.streamConfig.eyeHeight,
-                        g_ctx.streamConfig.foveationCenterSizeX, g_ctx.streamConfig.foveationCenterSizeY,
-                        g_ctx.streamConfig.foveationCenterShiftX, g_ctx.streamConfig.foveationCenterShiftY,
-                        g_ctx.streamConfig.foveationEdgeRatioX, g_ctx.streamConfig.foveationEdgeRatioY});
+                       {g_ctx.streamConfig.enableFoveation, g_ctx.streamConfig.eyeWidth,
+                        g_ctx.streamConfig.eyeHeight, EyeFov(),
+                        g_ctx.streamConfig.foveationStrength, g_ctx.streamConfig.foveationShape,
+                        g_ctx.streamConfig.foveationVerticalOffset});
     ovrRenderer_CreateScene(&g_ctx.Renderer, g_ctx.darkMode);
 
     // On Oculus Quest, without ExtraLatencyMode frames passed to vrapi_SubmitFrame2 are sometimes discarded from VrAPI(?).
@@ -831,8 +796,8 @@ void updateHapticsState() {
                 remoteCapabilities.HapticSamplesMax, remoteCapabilities.HapticSampleDurationMS);
 
             auto requiredHapticsBuffer = static_cast<uint32_t >((s.endUs - currentUs) /
-                                                                (remoteCapabilities.HapticSampleDurationMS *
-                                                                1000));
+                                                                remoteCapabilities.HapticSampleDurationMS *
+                                                                1000);
 
             std::vector<uint8_t> hapticBuffer(remoteCapabilities.HapticSamplesMax);
             ovrHapticBuffer buffer;
@@ -842,11 +807,18 @@ void updateHapticsState() {
                                          requiredHapticsBuffer);
             buffer.Terminated = false;
 
-            for (uint32_t i = 0; i < buffer.NumSamples; i++) {
-                if (s.amplitude > 1.0f)
-                    hapticBuffer[i] = 255;
-                else
-                    hapticBuffer[i] = static_cast<uint8_t>(255 * s.amplitude);
+            for (uint32_t i = 0; i < remoteCapabilities.HapticSamplesMax; i++) {
+                float current = ((currentUs - s.startUs) / 1000000.0f) +
+                                (remoteCapabilities.HapticSampleDurationMS * i) / 1000.0f;
+                float intensity =
+                        (sinf(static_cast<float>(current * M_PI * 2 * s.frequency)) + 1.0f) * 0.5f *
+                        s.amplitude;
+                if (intensity < 0) {
+                    intensity = 0;
+                } else if (intensity > 1.0) {
+                    intensity = 1.0;
+                }
+                hapticBuffer[i] = static_cast<uint8_t>(255 * intensity);
             }
 
             result = vrapi_SetHapticVibrationBuffer(g_ctx.Ovr, curCaps.DeviceID, &buffer);
@@ -977,7 +949,7 @@ void onHapticsFeedbackNative(long long startTime, float amplitude, float duratio
 
 void onBatteryChangedNative(int battery, int plugged) {
     g_ctx.batteryLevel = battery;
-    g_ctx.batteryPlugged = plugged;
+	g_ctx.batteryPlugged = plugged;
 }
 
 GuardianData getGuardianData() {
